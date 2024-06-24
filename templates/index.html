@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speech-to-Text Summarization</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Speech-to-Text Summarization</h1>
+        <form id="transcribeForm" action="/transcribe" method="post" enctype="multipart/form-data">
+            <input type="text" id="url" name="url" placeholder="Enter YouTube URL">
+            <input type="file" id="file" name="file" accept="audio/*">
+            <input type="submit" value="Transcribe and Summarize">
+        </form>
+        <div id="loading" style="display: none;">Processing...</div>
+        <div id="response" class="response"></div>
+        <div id="result">
+            <h2>Transcription</h2>
+            <p id="transcription"></p>
+            <h2>Summary</h2>
+            <p id="summary"></p>
+        </div>
+    </div>
+    <footer>
+        <p>&copy; 2024 Ebramha. All rights reserved.</p>
+    </footer>
+    <script src="{{ url_for('static', filename='js/scripts.js') }}"></script>
+</body>
+</html>
