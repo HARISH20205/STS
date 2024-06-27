@@ -1,31 +1,48 @@
-document.getElementById('transcribeForm').addEventListener('submit', async function(event) {
+document.getElementById("transcribeForm").addEventListener("submit", function(event) {
     event.preventDefault();
-    const formData = new FormData(this);
-    document.getElementById('loading').style.display = 'block';
-    document.getElementById('response').style.display = 'none';
 
-    try {
-        const response = await fetch('/transcribe', {
-            method: 'POST',
-            body: formData
-        });
+    var form = event.target;
+    var formData = new FormData(form);
+    var xhr = new XMLHttpRequest();
 
-        const result = await response.json();
-        document.getElementById('loading').style.display = 'none';
+    // Display the processing message before sending the request
+    document.getElementById("processing").style.display = "block";
+    document.getElementById("processing").textContent = "Processing...";
 
-        if (response.ok) {
-            document.getElementById('transcription').textContent = result.transcription;
-            document.getElementById('summary').textContent = result.summary;
-            document.getElementById('result').style.display = 'block';
-        } else {
-            document.getElementById('response').textContent = result.error;
-            document.getElementById('response').classList.add('error');
-            document.getElementById('response').style.display = 'block';
+    xhr.open("POST", form.action, true);
+
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === XMLHttpRequest.DONE) {
+            document.getElementById("processing").style.display = "none";
+
+            var response = JSON.parse(xhr.responseText);
+
+            if (xhr.status === 200) {
+                document.getElementById("summary-content").textContent = response.summary;
+                document.getElementById("transcription-content").textContent = response.transcription;
+            } else {
+                document.getElementById("processing").style.display = "block";
+                document.getElementById("processing").textContent = response.error;
+            }
+
+            document.getElementById("youtube-url").disabled = false;
+            document.getElementById("file-input").disabled = false;
         }
-    } catch (error) {
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('response').textContent = 'An error occurred while processing your request.';
-        document.getElementById('response').classList.add('error');
-        document.getElementById('response').style.display = 'block';
-    }
+    };
+
+    xhr.send(formData);
+
+    document.getElementById("youtube-url").disabled = true;
+    document.getElementById("file-input").disabled = true;
+    document.getElementById("summary-content").textContent = "Summary content will appear here...";
+    document.getElementById("transcription-content").textContent = "Transcription content will appear here...";
+});
+
+document.getElementById('clear-btn').addEventListener('click', function() {
+    document.getElementById('youtube-url').value = '';
+    document.getElementById('file-input').value = '';
+    document.getElementById("summary-content").textContent = "Summary content will appear here...";
+    document.getElementById("transcription-content").textContent = "Transcription content will appear here...";
+    document.getElementById("processing").style.display = "none";
+    document.getElementById("processing").textContent = "Processing...";
 });

@@ -9,6 +9,7 @@ import validators
 import logging
 from functools import lru_cache
 from dotenv import load_dotenv
+import time
 
 load_dotenv()
 
@@ -16,10 +17,8 @@ app = Flask(__name__)
 
 logging.basicConfig(level=logging.INFO)
 
-# Load Pegasus model name directly (replace with your preferred model)
-MODEL_NAME = "google/pegasus-xsum"
+MODEL_NAME = "google/pegasus-multi_news"
 
-# Function to convert audio file to WAV format if it's not already in that format
 def convert_to_wav(audio_file_path):
     try:
         logging.info(f"Converting {audio_file_path} to WAV...")
@@ -35,19 +34,16 @@ def convert_to_wav(audio_file_path):
         logging.error(f"Error converting audio to WAV: {e}")
         raise ValueError(f"Error converting audio to WAV: {e}")
 
-# Cached function to load Whisper model
 @lru_cache(maxsize=1)
 def load_whisper_model():
     return whisper.load_model("base")
 
-# Cached function to load Pegasus model
 @lru_cache(maxsize=1)
 def load_pegasus_model():
     tokenizer = PegasusTokenizer.from_pretrained(MODEL_NAME)
     model = PegasusForConditionalGeneration.from_pretrained(MODEL_NAME)
     return tokenizer, model
 
-# Function to transcribe audio using Whisper
 def transcribe_audio_with_whisper(audio_file_path):
     try:
         logging.info(f"Transcribing audio file: {audio_file_path}")
@@ -61,13 +57,15 @@ def transcribe_audio_with_whisper(audio_file_path):
         logging.error(f"Error in audio transcription: {e}")
         raise ValueError(f"Error in audio transcription: {e}")
 
-# Function to summarize text using Pegasus-XSUM
 def summarize_text_with_pegasus(text, tokenizer, model):
     try:
         inputs = tokenizer(text, truncation=True, padding="longest", return_tensors="pt")
         total_tokens = len(inputs["input_ids"][0])
         min_summary_length = max(math.ceil(total_tokens / 5), 30)
         max_summary_length = min(math.ceil(total_tokens / 3), 120)
+
+        if min_summary_length >= max_summary_length:
+            min_summary_length = max_summary_length - 1
 
         summary_ids = model.generate(
             inputs.input_ids,
@@ -83,27 +81,34 @@ def summarize_text_with_pegasus(text, tokenizer, model):
         logging.error(f"Error in text summarization: {e}")
         raise ValueError(f"Error in text summarization: {e}")
 
-# Function to download audio from YouTube
-def download_audio_from_youtube(url):
-    try:
-        if validators.url(url):
-            yt = YouTube(url)
-            audio_stream = yt.streams.filter(only_audio=True).first()
-            if audio_stream:
-                output_file_path = audio_stream.download(filename="downloaded_audio")
-                return output_file_path
+def download_audio_from_youtube(url, retries=3, backoff_factor=0.3):
+    attempt = 0
+    while attempt < retries:
+        try:
+            if validators.url(url):
+                yt = YouTube(url)
+                audio_stream = yt.streams.filter(only_audio=True).first()
+                if audio_stream:
+                    output_file_path = audio_stream.download(filename="downloaded_audio")
+                    return output_file_path
+                else:
+                    raise ValueError("No audio streams found for the YouTube video.")
             else:
-                raise ValueError("No audio streams found for the YouTube video.")
-        else:
-            raise ValueError("Invalid YouTube URL provided.")
-    except Exception as e:
-        logging.error(f"Error downloading audio from YouTube: {e}")
-        raise ValueError(f"Error downloading audio from YouTube: {e}")
+                raise ValueError("Invalid YouTube URL provided.")
+        except Exception as e:
+            logging.error(f"Attempt {attempt + 1} failed: {e}")
+            attempt += 1
+            time.sleep(backoff_factor * (2 ** attempt))
+            if attempt == retries:
+                raise ValueError(f"Error downloading audio from YouTube: {e}")
+def allowed_file(filename):
+    ALLOWED_EXTENSIONS = {'wav', 'mp3', 'aac', 'flac', 'm4a'}
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 
 @app.route('/')
 def index():
     return render_template('index.html')
-
 @app.route('/transcribe', methods=['POST'])
 def transcribe():
     try:
@@ -112,6 +117,10 @@ def transcribe():
             audio_file_path = download_audio_from_youtube(youtube_url)
         elif 'file' in request.files:
             audio_file = request.files['file']
+            if not audio_file.filename:
+                return jsonify({"error": "No file selected."}), 400
+            if not allowed_file(audio_file.filename):
+                return jsonify({"error": "Invalid file type. Please upload an audio file."}), 400
             audio_file_path = f"uploaded_audio.{audio_file.filename.split('.')[-1]}"
             audio_file.save(audio_file_path)
         else:
@@ -124,8 +133,11 @@ def transcribe():
             return jsonify({"transcription": transcription, "summary": summary})
         else:
             return jsonify({"error": "Transcription failed."}), 500
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "An unexpected error occurred."}), 500
+
 
 if __name__ == "__main__":
     app.run(debug=True)

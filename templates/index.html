@@ -7,25 +7,37 @@
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/styles.css') }}">
 </head>
 <body>
+    <h1>Speech-to-Text Summarization</h1>
     <div class="container">
-        <h1>Speech-to-Text Summarization</h1>
-        <form id="transcribeForm" action="/transcribe" method="post" enctype="multipart/form-data">
-            <input type="text" id="url" name="url" placeholder="Enter YouTube URL">
-            <input type="file" id="file" name="file" accept="audio/*">
-            <input type="submit" value="Transcribe and Summarize">
-        </form>
-        <div id="loading" style="display: none;">Processing...</div>
-        <div id="response" class="response"></div>
-        <div id="result">
-            <h2>Transcription</h2>
-            <p id="transcription"></p>
-            <h2>Summary</h2>
-            <p id="summary"></p>
+        <div class="left-container">
+            <form id="transcribeForm" action="/transcribe" method="post" enctype="multipart/form-data">
+                <div class="input-container">
+                    <input type="text" id="youtube-url" name="url" placeholder="Enter YouTube URL">
+                </div>
+                <div class="input-container">
+                    <input type="file" id="file-input" name="file" accept="audio/*">
+                </div>
+                <div class="input-container">
+                    <input type="submit" value="Transcribe and Summarize">
+                </div>
+                <div class="input-container">
+                    <button type="button" id="clear-btn">Clear</button>
+                </div>
+            </form>
+            <div id="processing">Processing...</div>
+        </div>
+        <div class="right-container">
+            <div id="summary" class="response-box">
+                <h2>Summary</h2>
+                <p id="summary-content">Summary content will appear here...</p>
+            </div>
+            <div id="transcription" class="response-box">
+                <h2>Transcription</h2>
+                <p id="transcription-content">Transcription content will appear here...</p>
+            </div>
         </div>
     </div>
-    <footer>
-        <p>&copy; 2024 Ebramha. All rights reserved.</p>
-    </footer>
     <script src="{{ url_for('static', filename='js/scripts.js') }}"></script>
 </body>
 </html>
+    
