@@ -6,3 +6,4 @@ transformers
 pytube3
 validators
 python-dotenv
+pymongo
