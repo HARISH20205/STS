@@ -2,7 +2,7 @@ Here's a formatted version of your project overview for a GitHub README file:
 
 ---
 
-# Speech-to-Text Summarization Project
+# Speech-to-Text Summarization
 
 ## 📜 Introduction
 Welcome to the Speech-to-Text Summarization Project! This nifty tool allows you to transcribe audio files or YouTube videos into text and then summarize that text for quick and easy reading. Perfect for busy bees and multitaskers who want to convert lengthy audio into concise summaries!
