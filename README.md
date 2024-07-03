@@ -1,7 +1,3 @@
-Here's a formatted version of your project overview for a GitHub README file:
-
----
-
 # Speech-to-Text Summarization
 
 ## 📜 Introduction
@@ -29,8 +25,8 @@ Before you dive in, make sure you have the following:
 ### 📦 Setup Instructions
 1. Clone the Repository:
    ```sh
-   git clone https://github.com/yourusername/speech-to-text-summarization.git
-   cd speech-to-text-summarization
+   git clone https://github.com/HARISH20205/STS.git
+   cd STS
    ```
 
 2. Install Dependencies:
@@ -156,15 +152,6 @@ To train Whisper and Pegasus on new data, refer to their respective documentatio
 3. Implement the Feature in the appropriate files.
 4. Test and Commit your changes.
 5. Submit a Pull Request with a detailed description of your feature.
-
-## 🤝 Contribution Guide
-
-### How to Contribute
-1. Fork the Repository on GitHub.
-2. Clone Your Fork locally.
-3. Create a New Branch for your changes.
-4. Push Your Changes and create a pull request.
-
 
 ### Credits
 - Whisper: OpenAI
