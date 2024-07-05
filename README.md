@@ -7,7 +7,7 @@ Welcome to the Speech-to-Text Summarization Project! This nifty tool allows you 
 - Audio Transcription: Converts spoken words from audio files or YouTube videos into text using Whisper.
 - Text Summarization: Summarizes the transcribed text into a shorter, more digestible format using Pegasus.
 - Web Interface: Sleek and easy-to-use web interface for uploading audio files or entering YouTube URLs.
-- Database Storage: Stores transcriptions and summaries in a MySQL database for future reference.
+- Database Storage: Stores transcriptions and summaries in both MySQL and MongoDB databases for future reference.
 
 ## 🎯 Use Cases
 - Students: Quickly summarize lectures and study materials.
@@ -20,6 +20,8 @@ Welcome to the Speech-to-Text Summarization Project! This nifty tool allows you 
 Before you dive in, make sure you have the following:
 - Python 3.8 or higher
 - MySQL database setup
+- MongoDB setup
+- FFmpeg installed (required for audio processing)
 - Basic knowledge of Flask and web development
 
 ### 📦 Setup Instructions
@@ -34,16 +36,22 @@ Before you dive in, make sure you have the following:
    pip install -r requirements.txt
    ```
 
-3. Configure Environment Variables:
-   Create a `.env` file in the root directory with your MySQL database credentials:
+3. Install FFmpeg:
+   Follow the instructions for your operating system from the [FFmpeg website](https://ffmpeg.org/download.html).
+
+4. Configure Environment Variables:
+   Create a `.env` file in the root directory with your MySQL and MongoDB database credentials:
    ```sh
    DB_HOST=your_db_host
    DB_USER=your_db_user
    DB_PASSWORD=your_db_password
    DB_NAME=your_db_name
+   MONGO_URI=your_mongo_uri
+   MONGO_DB_NAME=your_mongo_db_name
+   MONGO_COLLECTION_NAME=your_mongo_collection_name
    ```
 
-4. Run the Application:
+5. Run the Application:
    ```sh
    python app.py
    ```
@@ -69,12 +77,14 @@ The project uses Whisper to convert audio into text. Whisper is a state-of-the-a
 Pegasus, a transformer model designed for summarization, is used to create concise summaries of the transcribed text. The model smartly balances between truncating too little and summarizing too aggressively, ensuring you get the essence without missing the details.
 
 ### 🗄 Database Integration
-Transcriptions and summaries are stored in a MySQL database. The table data holds the following columns:
+Transcriptions and summaries are stored in both MySQL and MongoDB databases. The MySQL table holds the following columns:
 - `sno`: Serial number (auto-incremented)
 - `file`: Name of the audio file or YouTube URL
 - `transcription`: The transcribed text
 - `summary`: The summarized text
 - `upload_time`: Timestamp of when the data was uploaded
+
+The MongoDB collection stores the documents with similar fields for easy retrieval and scalability.
 
 ## 🗂 Code Structure
 
@@ -124,6 +134,9 @@ curl -X POST http://127.0.0.1:5000/transcribe -F "file=@path/to/your/audiofile.m
 - `DB_USER`: MySQL database username.
 - `DB_PASSWORD`: MySQL database password.
 - `DB_NAME`: MySQL database name.
+- `MONGO_URI`: MongoDB connection URI.
+- `MONGO_DB_NAME`: MongoDB database name.
+- `MONGO_COLLECTION_NAME`: MongoDB collection name.
 
 ### Configuration Files
 - `.env`: Stores environment variables for database configuration.
@@ -160,7 +173,6 @@ To train Whisper and Pegasus on new data, refer to their respective documentatio
 - Pytube: YouTube audio download
 - Flask: Web framework
 
-
 ### Maintainers
 - Harish KB : harishkb20205@gmail.com
 
@@ -176,5 +188,3 @@ To train Whisper and Pegasus on new data, refer to their respective documentatio
 - Pytube Documentation
 
 Enjoy transcribing and summarizing like never before! If you have any questions or need help, don't hesitate to reach out. Happy coding! 🎉
-
----
