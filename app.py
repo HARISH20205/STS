@@ -11,6 +11,8 @@ from functools import lru_cache
 from dotenv import load_dotenv
 import time
 import mysql.connector
+from collections import OrderedDict
+from pymongo import MongoClient
 
 load_dotenv()
 
@@ -30,6 +32,11 @@ db = mysql.connector.connect(
     database=os.getenv('DB_NAME')
 )
 cursor = db.cursor()
+
+# MongoDB database configuration
+mongo_client = MongoClient(os.getenv('MONGO_URI'))
+mongo_db = mongo_client[os.getenv('MONGO_DB_NAME')]
+mongo_collection = mongo_db[os.getenv('MONGO_COLLECTION_NAME')]
 
 # Function to create table if not exists
 def create_table_if_not_exists():
@@ -100,7 +107,7 @@ def summarize_text_with_pegasus(text, tokenizer, model):
 
         summary_ids = model.generate(
             inputs.input_ids,
-            num_beams=4,
+            num_beams=6,
             min_length=min_summary_length,
             max_length=max_summary_length,
             early_stopping=True
@@ -120,7 +127,7 @@ def download_audio_from_youtube(url, retries=3, backoff_factor=0.3):
             if validators.url(url):
                 yt = YouTube(url)
                 audio_stream = yt.streams.filter(only_audio=True).first()
-                if audio_stream:
+                if (audio_stream):
                     output_file_path = audio_stream.download(filename="downloaded_audio")
                     return output_file_path
                 else:
@@ -139,6 +146,21 @@ def allowed_file(filename):
     ALLOWED_EXTENSIONS = {'wav', 'mp3', 'aac', 'flac', 'm4a'}
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+# Function to remove repeated sentences
+def remove_repeated_sentences(text):
+    sentences = text.split('. ')
+    unique_sentences = list(OrderedDict.fromkeys(sentences))
+    return '. '.join(unique_sentences)
+
+# Function to check MongoDB connection
+def check_mongodb_connection():
+    try:
+        mongo_client.server_info()  # This will trigger an exception if not connected
+        return True
+    except Exception as e:
+        logging.error(f"MongoDB connection failed: {e}")
+        return False
+
 # Route to render index.html template
 @app.route('/')
 def index():
@@ -149,6 +171,10 @@ def index():
 def transcribe():
     try:
         create_table_if_not_exists()  # Ensure table exists
+        
+        # Check MongoDB connection before proceeding
+        if not check_mongodb_connection():
+            return jsonify({"error": "Failed to connect to MongoDB."}), 500
         
         if 'url' in request.form and request.form['url']:
             youtube_url = request.form['url']
@@ -168,8 +194,10 @@ def transcribe():
         
         transcription = transcribe_audio_with_whisper(audio_file_path)
         if transcription:
+            transcription = remove_repeated_sentences(transcription)
             tokenizer, model = load_pegasus_model()
             summary = summarize_text_with_pegasus(transcription, tokenizer, model)
+            summary = remove_repeated_sentences(summary)
             
             # Save transcription and summary to MySQL database
             insert_query = "INSERT INTO data (file, transcription, summary, upload_time) VALUES (%s, %s, %s, %s)"
@@ -177,6 +205,15 @@ def transcribe():
             
             cursor.execute(insert_query, (file_data, transcription, summary, upload_time))
             db.commit()
+            
+            # Save transcription and summary to MongoDB
+            mongo_document = {
+                "file": file_data,
+                "transcription": transcription,
+                "summary": summary,
+                "upload_time": upload_time
+            }
+            mongo_collection.insert_one(mongo_document)
             
             return jsonify({"transcription": transcription, "summary": summary})
         else:
