@@ -134,7 +134,7 @@ curl -X POST http://127.0.0.1:5000/transcribe -F "file=@path/to/your/audiofile.m
 - `DB_USER`: MySQL database username.
 - `DB_PASSWORD`: MySQL database password.
 - `DB_NAME`: MySQL database name.
-- `MONGO_URI`: MongoDB connection URI.
+- `MONGO_HOST`: MongoDB connection URI.
 - `MONGO_DB_NAME`: MongoDB database name.
 - `MONGO_COLLECTION_NAME`: MongoDB collection name.
 
