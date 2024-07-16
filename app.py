@@ -4,15 +4,15 @@ from pydub import AudioSegment
 import os
 from transformers import PegasusForConditionalGeneration, PegasusTokenizer
 import math
-from pytube import YouTube
-import validators
+from yt_dlp import YoutubeDL
 import logging
 from functools import lru_cache
 from dotenv import load_dotenv
 import time
-import mysql.connector
+import pymysql.cursors
 from collections import OrderedDict
 from pymongo import MongoClient
+import youtube_dl
 
 load_dotenv()
 
@@ -24,19 +24,23 @@ logging.basicConfig(level=logging.INFO)
 # Model setup
 MODEL_NAME = "google/pegasus-multi_news"
 
-# MySQL database configuration
-db = mysql.connector.connect(
+# MySQL database configuration with pymysql
+db = pymysql.connect(
     host=os.getenv('DB_HOST'),
     user=os.getenv('DB_USER'),
     password=os.getenv('DB_PASSWORD'),
-    database=os.getenv('DB_NAME')
+    database=os.getenv('DB_NAME'),
+    cursorclass=pymysql.cursors.DictCursor  # Use DictCursor for easier dictionary access
 )
-cursor = db.cursor()
 
 # MongoDB database configuration
-mongo_client = MongoClient(os.getenv('MONGO_URI'))
-mongo_db = mongo_client[os.getenv('MONGO_DB_NAME')]
-mongo_collection = mongo_db[os.getenv('MONGO_COLLECTION_NAME')]
+mongo_host = os.getenv('MONGO_HOST')
+mongo_db_name = os.getenv('MONGO_DB_NAME')
+mongo_collection_name = os.getenv('MONGO_COLLECTION_NAME')
+
+mongo_client = MongoClient(mongo_host)
+mongo_db = mongo_client[mongo_db_name]
+mongo_collection = mongo_db[mongo_collection_name]
 
 # Function to create table if not exists
 def create_table_if_not_exists():
@@ -49,8 +53,9 @@ def create_table_if_not_exists():
         upload_time DATETIME NOT NULL
     )
     """
-    cursor.execute(create_table_query)
-    db.commit()
+    with db.cursor() as cursor:
+        cursor.execute(create_table_query)
+        db.commit()
 
 # Function to convert audio to WAV format
 def convert_to_wav(audio_file_path):
@@ -59,7 +64,7 @@ def convert_to_wav(audio_file_path):
         file_name, file_extension = os.path.splitext(audio_file_path)
         if file_extension.lower() != '.wav':
             audio = AudioSegment.from_file(audio_file_path)
-            wav_file_path = f"{file_name}.wav"
+            wav_file_path = f"{file_name}.wav"  # Ensure correct extension
             audio.export(wav_file_path, format="wav")
             logging.info(f"Conversion successful. WAV file saved at {wav_file_path}")
             return wav_file_path
@@ -85,11 +90,10 @@ def transcribe_audio_with_whisper(audio_file_path):
     try:
         logging.info(f"Transcribing audio file: {audio_file_path}")
         model = load_whisper_model()
-        wav_file_path = convert_to_wav(audio_file_path)
-        if wav_file_path:
-            result = model.transcribe(wav_file_path)
-            return result["text"]
-        return None
+        if not os.path.exists(audio_file_path):
+            raise ValueError(f"File {audio_file_path} not found.")
+        result = model.transcribe(audio_file_path)
+        return result["text"]
     except Exception as e:
         logging.error(f"Error in audio transcription: {e}")
         raise ValueError(f"Error in audio transcription: {e}")
@@ -119,27 +123,29 @@ def summarize_text_with_pegasus(text, tokenizer, model):
         logging.error(f"Error in text summarization: {e}")
         raise ValueError(f"Error in text summarization: {e}")
 
-# Function to download audio from YouTube
-def download_audio_from_youtube(url, retries=3, backoff_factor=0.3):
-    attempt = 0
-    while attempt < retries:
-        try:
-            if validators.url(url):
-                yt = YouTube(url)
-                audio_stream = yt.streams.filter(only_audio=True).first()
-                if (audio_stream):
-                    output_file_path = audio_stream.download(filename="downloaded_audio")
-                    return output_file_path
-                else:
-                    raise ValueError("No audio streams found for the YouTube video.")
-            else:
-                raise ValueError("Invalid YouTube URL provided.")
-        except Exception as e:
-            logging.error(f"Attempt {attempt + 1} failed: {e}")
-            attempt += 1
-            time.sleep(backoff_factor * (2 ** attempt))
-            if attempt == retries:
-                raise ValueError(f"Error downloading audio from YouTube: {e}")
+# Function to download audio from YouTube using yt_dlp
+def download_audio_from_youtube(url):
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'wav',
+            'preferredquality': '192',
+        }],
+        'outtmpl': 'downloaded_audio.%(ext)s'  # Generic name for downloaded audio
+    }
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            audio_file_path = ydl.prepare_filename(info)
+            audio_file_path = audio_file_path.replace('.webm', '.wav')
+            return audio_file_path
+    except youtube_dl.utils.DownloadError as e:
+        logging.error(f"Error downloading audio from YouTube: {e}")
+        raise ValueError(f"Error downloading audio from YouTube: {e}")
+    except Exception as e:
+        logging.error(f"Unexpected error downloading audio: {e}")
+        raise ValueError(f"Unexpected error downloading audio: {e}")
 
 # Function to check allowed file extensions
 def allowed_file(filename):
@@ -173,6 +179,9 @@ def transcribe():
         create_table_if_not_exists()  # Ensure table exists
         
         # Check MongoDB connection before proceeding
+        if os.path.exists("downloaded_audio.wav"):
+            os.remove("downloaded_audio.wav")
+
         if not check_mongodb_connection():
             return jsonify({"error": "Failed to connect to MongoDB."}), 500
         
@@ -186,12 +195,14 @@ def transcribe():
                 return jsonify({"error": "No file selected."}), 400
             if not allowed_file(audio_file.filename):
                 return jsonify({"error": "Invalid file type. Please upload an audio file."}), 400
-            audio_file_path = f"uploaded_audio.{audio_file.filename.split('.')[-1]}"
+            audio_file_path = "uploaded_audio.wav"  # Fixed name for uploaded audio
             audio_file.save(audio_file_path)
             file_data = audio_file.filename  # Use filename as file data
         else:
             return jsonify({"error": "No audio file or URL provided."}), 400
         
+        audio_file_path = convert_to_wav(audio_file_path)  # Ensure the file is in WAV format
+
         transcription = transcribe_audio_with_whisper(audio_file_path)
         if transcription:
             transcription = remove_repeated_sentences(transcription)
@@ -203,8 +214,9 @@ def transcribe():
             insert_query = "INSERT INTO data (file, transcription, summary, upload_time) VALUES (%s, %s, %s, %s)"
             upload_time = time.strftime('%Y-%m-%d %H:%M:%S')  # Current timestamp
             
-            cursor.execute(insert_query, (file_data, transcription, summary, upload_time))
-            db.commit()
+            with db.cursor() as cursor:
+                cursor.execute(insert_query, (file_data, transcription, summary, upload_time))
+                db.commit()
             
             # Save transcription and summary to MongoDB
             mongo_document = {
@@ -214,7 +226,7 @@ def transcribe():
                 "upload_time": upload_time
             }
             mongo_collection.insert_one(mongo_document)
-            
+        
             return jsonify({"transcription": transcription, "summary": summary})
         else:
             return jsonify({"error": "Transcription failed."}), 500

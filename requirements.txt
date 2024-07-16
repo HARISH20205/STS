@@ -7,3 +7,8 @@ pytube3
 validators
 python-dotenv
 pymongo
+mysql-connector
+mysqlclient
+pymysql
+youtube_dl
+sentencepiece
