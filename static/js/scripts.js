@@ -46,3 +46,22 @@ document.getElementById('clear-btn').addEventListener('click', function() {
     document.getElementById("processing").style.display = "none";
     document.getElementById("processing").textContent = "Processing...";
 });
+
+document.getElementById('copy-summary-btn').addEventListener('click', function() {
+    copyToClipboard('summary-content');
+});
+
+document.getElementById('copy-transcription-btn').addEventListener('click', function() {
+    copyToClipboard('transcription-content');
+});
+
+function copyToClipboard(elementId) {
+    var text = document.getElementById(elementId).textContent;
+    var textarea = document.createElement("textarea");
+    textarea.value = text;
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand("copy");
+    document.body.removeChild(textarea);
+    alert("Copied to clipboard");
+}

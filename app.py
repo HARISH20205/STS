@@ -3,6 +3,7 @@ import whisper
 from pydub import AudioSegment
 import os
 from transformers import PegasusForConditionalGeneration, PegasusTokenizer
+import torch
 import math
 from yt_dlp import YoutubeDL
 import logging
@@ -13,6 +14,7 @@ import pymysql.cursors
 from collections import OrderedDict
 from pymongo import MongoClient
 import youtube_dl
+import re
 
 load_dotenv()
 
@@ -22,7 +24,7 @@ app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 
 # Model setup
-MODEL_NAME = "google/pegasus-multi_news"
+MODEL_NAME = "google/pegasus-xsum"
 
 # MySQL database configuration with pymysql
 db = pymysql.connect(
@@ -111,7 +113,7 @@ def summarize_text_with_pegasus(text, tokenizer, model):
 
         summary_ids = model.generate(
             inputs.input_ids,
-            num_beams=6,
+            num_beams=5,
             min_length=min_summary_length,
             max_length=max_summary_length,
             early_stopping=True
@@ -154,7 +156,8 @@ def allowed_file(filename):
 
 # Function to remove repeated sentences
 def remove_repeated_sentences(text):
-    sentences = text.split('. ')
+    sentences = re.split(r'[,.]\s*', text)
+
     unique_sentences = list(OrderedDict.fromkeys(sentences))
     return '. '.join(unique_sentences)
 
@@ -181,6 +184,8 @@ def transcribe():
         # Check MongoDB connection before proceeding
         if os.path.exists("downloaded_audio.wav"):
             os.remove("downloaded_audio.wav")
+        if os.path.exists("uploaded_audio.wav"):
+            os.remove("uploaded_audio.wav")
 
         if not check_mongodb_connection():
             return jsonify({"error": "Failed to connect to MongoDB."}), 500
@@ -226,7 +231,10 @@ def transcribe():
                 "upload_time": upload_time
             }
             mongo_collection.insert_one(mongo_document)
-        
+            if os.path.exists("downloaded_audio.wav"):
+                os.remove("downloaded_audio.wav")
+            if os.path.exists("uploaded_audio.wav"):
+                os.remove("uploaded_audio.wav")
             return jsonify({"transcription": transcription, "summary": summary})
         else:
             return jsonify({"error": "Transcription failed."}), 500
