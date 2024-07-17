@@ -91,6 +91,9 @@ form {
 }
 
 .response-box h2 {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     margin-top: 0;
     font-size: 1.5em;
     color: #ffffff;
@@ -104,6 +107,21 @@ form {
 
 #summary, #transcription {
     margin-top: 10px;
+}
+
+.copy-btn {
+    background-color: #007bff;
+    color: #fff;
+    border: none;
+    padding: 5px 10px;
+    cursor: pointer;
+    border-radius: 5px;
+    font-size: 0.9em;
+    transition: background-color 0.3s ease;
+}
+
+.copy-btn:hover {
+    background-color: #0056b3;
 }
 
 /* Responsive styling */
