@@ -1,3 +1,5 @@
 .env
 myenv/
 text.txt
+downloaded_audio.wav
+uploaded_audio.wav

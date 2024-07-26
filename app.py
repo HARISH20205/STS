@@ -13,7 +13,6 @@ import time
 import pymysql.cursors
 from collections import OrderedDict
 from pymongo import MongoClient
-import youtube_dl
 import re
 
 load_dotenv()
@@ -43,6 +42,10 @@ mongo_collection_name = os.getenv('MONGO_COLLECTION_NAME')
 mongo_client = MongoClient(mongo_host)
 mongo_db = mongo_client[mongo_db_name]
 mongo_collection = mongo_db[mongo_collection_name]
+
+print(f"Mongo Host: {mongo_host}")
+print(f"Mongo DB Name: {mongo_db_name}")
+print(f"Mongo Collection Name: {mongo_collection_name}")
 
 # Function to create table if not exists
 def create_table_if_not_exists():
@@ -105,8 +108,8 @@ def summarize_text_with_pegasus(text, tokenizer, model):
     try:
         inputs = tokenizer(text, truncation=True, padding="longest", return_tensors="pt")
         total_tokens = len(inputs["input_ids"][0])
-        min_summary_length = max(math.ceil(total_tokens / 3), 30)
-        max_summary_length = max(math.ceil(total_tokens / 2), 120)
+        min_summary_length = max(math.ceil(total_tokens / 4), 75)  # Adjusted minimum summary length
+        max_summary_length = max(math.ceil(total_tokens / 3), 200)  # Adjusted maximum summary length
 
         if min_summary_length >= max_summary_length:
             min_summary_length = max_summary_length - 1
@@ -120,6 +123,7 @@ def summarize_text_with_pegasus(text, tokenizer, model):
         )
 
         summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
+        summary = remove_repeated_sentences(summary)  # Remove repeated sentences from summary
         return summary
     except Exception as e:
         logging.error(f"Error in text summarization: {e}")
@@ -156,10 +160,17 @@ def allowed_file(filename):
 
 # Function to remove repeated sentences
 def remove_repeated_sentences(text):
-    sentences = re.split(r'[,.]\s*', text)
+    sentences = re.split(r'(?<=[.!?]) +', text)  # Split by sentence-ending punctuation
+    unique_sentences = []
+    seen_sentences = set()
 
-    unique_sentences = list(OrderedDict.fromkeys(sentences))
-    return '. '.join(unique_sentences)
+    for sentence in sentences:
+        normalized_sentence = sentence.lower().strip()
+        if normalized_sentence not in seen_sentences:
+            unique_sentences.append(sentence)
+            seen_sentences.add(normalized_sentence)
+    
+    return ' '.join(unique_sentences)
 
 # Function to check MongoDB connection
 def check_mongodb_connection():
@@ -210,10 +221,8 @@ def transcribe():
 
         transcription = transcribe_audio_with_whisper(audio_file_path)
         if transcription:
-            transcription = remove_repeated_sentences(transcription)
             tokenizer, model = load_pegasus_model()
             summary = summarize_text_with_pegasus(transcription, tokenizer, model)
-            summary = remove_repeated_sentences(summary)
             
             # Save transcription and summary to MySQL database
             insert_query = "INSERT INTO data (file, transcription, summary, upload_time) VALUES (%s, %s, %s, %s)"
@@ -245,4 +254,4 @@ def transcribe():
         return jsonify({"error": "An unexpected error occurred."}), 500
 
 if __name__ == "__main__":
-    app.run(debug=False)
+    app.run(debug=True)
