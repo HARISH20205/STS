@@ -12,3 +12,4 @@ mysqlclient
 pymysql
 youtube_dl
 sentencepiece
+yt-dlp
