@@ -2,6 +2,8 @@ from flask import Flask, request, jsonify, render_template
 import whisper
 from pydub import AudioSegment
 import os
+import io
+import numpy as np
 from transformers import PegasusForConditionalGeneration, PegasusTokenizer
 import math
 from yt_dlp import YoutubeDL
@@ -10,6 +12,7 @@ from functools import lru_cache
 from dotenv import load_dotenv
 import time
 import re
+import tempfile
 
 load_dotenv()
 
@@ -21,18 +24,16 @@ logging.basicConfig(level=logging.INFO)
 # Model setup
 MODEL_NAME = "google/pegasus-xsum"
 
-# Function to convert audio to MP3 format
-def convert_to_mp3(audio_file_path):
+# Function to convert audio bytes to MP3 format in memory
+def convert_audio_to_mp3(audio_bytes, original_format=None):
     try:
-        logging.info(f"Converting {audio_file_path} to MP3...")
-        file_name, file_extension = os.path.splitext(audio_file_path)
-        if file_extension.lower() != '.mp3':
-            audio = AudioSegment.from_file(audio_file_path)
-            mp3_file_path = f"{file_name}.mp3"  # Ensure correct extension
-            audio.export(mp3_file_path, format="mp3")
-            logging.info(f"Conversion successful. MP3 file saved at {mp3_file_path}")
-            return mp3_file_path
-        return audio_file_path
+        logging.info(f"Converting audio from {original_format} to MP3 in memory...")
+        audio = AudioSegment.from_file(io.BytesIO(audio_bytes), format=original_format)
+        buffer = io.BytesIO()
+        audio.export(buffer, format="mp3")
+        buffer.seek(0)
+        logging.info("Conversion successful")
+        return buffer
     except Exception as e:
         logging.error(f"Error converting audio to MP3: {e}")
         raise ValueError(f"Error converting audio to MP3: {e}")
@@ -50,13 +51,22 @@ def load_pegasus_model():
     return tokenizer, model
 
 # Function to transcribe audio using Whisper
-def transcribe_audio_with_whisper(audio_file_path):
+def transcribe_audio_with_whisper(audio_data):
     try:
-        logging.info(f"Transcribing audio file: {audio_file_path}")
+        logging.info("Transcribing audio data")
         model = load_whisper_model()
-        if not os.path.exists(audio_file_path):
-            raise ValueError(f"File {audio_file_path} not found.")
-        result = model.transcribe(audio_file_path)
+        
+        # Create a temporary file for Whisper (which requires a file path)
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=True) as temp_file:
+            if isinstance(audio_data, io.BytesIO):
+                temp_file.write(audio_data.getvalue())
+            else:
+                temp_file.write(audio_data)
+            temp_file.flush()
+            
+            # Transcribe using the temporary file
+            result = model.transcribe(temp_file.name)
+        
         return result["text"]
     except Exception as e:
         logging.error(f"Error in audio transcription: {e}")
@@ -88,8 +98,11 @@ def summarize_text_with_pegasus(text, tokenizer, model):
         logging.error(f"Error in text summarization: {e}")
         raise ValueError(f"Error in text summarization: {e}")
 
-# Function to download audio from YouTube using yt_dlp
+# Function to download audio from YouTube using yt_dlp (in memory)
 def download_audio_from_youtube(url):
+    # Create a buffer to store the downloaded audio
+    buffer = io.BytesIO()
+    
     ydl_opts = {
         'format': 'bestaudio/best',
         'postprocessors': [{
@@ -97,13 +110,33 @@ def download_audio_from_youtube(url):
             'preferredcodec': 'mp3',
             'preferredquality': '192',
         }],
-        'outtmpl': 'downloaded_audio.%(ext)s'  # Generic name for downloaded audio
+        # Use temp directory for intermediate files
+        'outtmpl': '-',
+        'logtostderr': True,
+        'quiet': True,
+        'no_warnings': True,
+        # Stream to stdout and capture
+        'extract_audio': True,
     }
+    
     try:
-        with YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            audio_file_path = ydl.prepare_filename(info).replace('.webm', '.mp3').replace('.m4a', '.mp3')
-            return audio_file_path
+        logging.info(f"Downloading audio from YouTube: {url}")
+        # Create temp file for YouTube-DL (it needs a file path)
+        with tempfile.NamedTemporaryFile(suffix=".%(ext)s") as temp_file:
+            ydl_opts['outtmpl'] = temp_file.name
+
+            with YoutubeDL(ydl_opts) as ydl:
+                # Extract info and download
+                info = ydl.extract_info(url, download=True)
+                # Get the filename of the downloaded audio
+                audio_file_path = ydl.prepare_filename(info).replace('.webm', '.mp3').replace('.m4a', '.mp3')
+                
+                # Read the file into memory
+                with open(audio_file_path, 'rb') as audio_file:
+                    buffer = io.BytesIO(audio_file.read())
+                    buffer.seek(0)
+        
+        return buffer
     except Exception as e:
         logging.error(f"Unexpected error downloading audio: {e}")
         raise ValueError(f"Error downloading audio from YouTube: {e}")
@@ -127,7 +160,6 @@ def remove_repeated_sentences(text):
     
     return ' '.join(unique_sentences)
 
-
 # Route to render index.html template
 @app.route('/')
 def index():
@@ -137,39 +169,30 @@ def index():
 @app.route('/transcribe', methods=['POST'])
 def transcribe():
     try:
-        # Clean up any existing files
-        if os.path.exists("downloaded_audio.mp3"):
-            os.remove("downloaded_audio.mp3")
-        if os.path.exists("uploaded_audio.mp3"):
-            os.remove("uploaded_audio.mp3")
-
+        audio_data = None
+        
         if 'url' in request.form and request.form['url']:
             youtube_url = request.form['url']
-            audio_file_path = download_audio_from_youtube(youtube_url)
+            audio_data = download_audio_from_youtube(youtube_url)
         elif 'file' in request.files:
             audio_file = request.files['file']
             if not audio_file.filename:
                 return jsonify({"error": "No file selected."}), 400
             if not allowed_file(audio_file.filename):
                 return jsonify({"error": "Invalid file type. Please upload an audio file."}), 400
-            audio_file_path = "uploaded_audio.mp3"  # Fixed name for uploaded audio
-            audio_file.save(audio_file_path)
+            
+            # Read file data into memory
+            audio_bytes = audio_file.read()
+            file_format = audio_file.filename.rsplit('.', 1)[1].lower()
+            audio_data = convert_audio_to_mp3(audio_bytes, original_format=file_format)
         else:
             return jsonify({"error": "No audio file or URL provided."}), 400
         
-        audio_file_path = convert_to_mp3(audio_file_path)  # Ensure the file is in MP3 format
-
-        transcription = transcribe_audio_with_whisper(audio_file_path)
+        transcription = transcribe_audio_with_whisper(audio_data)
+        
         if transcription:
             tokenizer, model = load_pegasus_model()
             summary = summarize_text_with_pegasus(transcription, tokenizer, model)
-            
-            # Clean up files
-            if os.path.exists("downloaded_audio.mp3"):
-                os.remove("downloaded_audio.mp3")
-            if os.path.exists("uploaded_audio.mp3"):
-                os.remove("uploaded_audio.mp3")
-                
             return jsonify({"transcription": transcription, "summary": summary})
         else:
             return jsonify({"error": "Transcription failed."}), 500
@@ -180,4 +203,4 @@ def transcribe():
         return jsonify({"error": "An unexpected error occurred."}), 500
 
 if __name__ == "__main__":
-    app.run(debug=True,port=7860)
+    app.run(debug=True, port=7860)
