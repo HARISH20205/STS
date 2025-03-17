@@ -17,10 +17,10 @@ COPY . .
 
 RUN mkdir -p /app/static/audio
 
-EXPOSE 8000
+EXPOSE 7860
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     MODEL_NAME="google/pegasus-xsum"
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:7860", "app:app"]
