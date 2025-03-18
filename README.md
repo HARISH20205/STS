@@ -14,7 +14,7 @@ This is a Flask-based web application that transcribes audio files or YouTube vi
 1. Clone the repository:
    ```bash
    git clone https://github.com/HARISH20205/STS.git
-   cd audio-transcription-summarization
+   cd STS
    ```
 
 2. Install dependencies:
