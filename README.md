@@ -1,9 +1,6 @@
 # Speech-Summarize
 
 This is a Flask-based web application that transcribes audio files or YouTube videos and provides summary of it
-# Speech-Summarize
-
-This is a Flask-based web application that transcribes audio files or YouTube videos and provides summary of it
 
 ## Features
 - Transcribes audio files or YouTube videos into text.
@@ -32,7 +29,6 @@ This is a Flask-based web application that transcribes audio files or YouTube vi
    python app.py
    ```
 
-5. Open the browser at `http://127.0.0.1:7860`.
 
 5. Open the browser at `http://127.0.0.1:7860`.
 
